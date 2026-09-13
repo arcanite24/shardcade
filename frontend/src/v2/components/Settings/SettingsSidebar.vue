@@ -80,6 +80,12 @@ const groups = computed<Group[]>(() => {
       label: t("settings.group-library"),
       entries: [
         {
+          icon: "mdi-download-box-outline",
+          label: t("providers.title"),
+          to: { name: ROUTES.PROVIDERS },
+          visible: isAdmin.value,
+        },
+        {
           icon: "mdi-radar",
           label: t("scan.scan"),
           to: { name: ROUTES.SCAN },

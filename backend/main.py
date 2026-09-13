@@ -48,6 +48,7 @@ from endpoints.music_playlists import router as music_playlists_router
 from endpoints.netplay import router as netplay_router
 from endpoints.permissions import router as permissions_router
 from endpoints.platform import router as platform_router
+from endpoints.providers import router as providers_router
 from endpoints.play_sessions import router as play_sessions_router
 from endpoints.recommendations import router as recommendations_router
 from endpoints.roms import router as rom_router
@@ -188,6 +189,7 @@ app.include_router(device_router, prefix="/api")
 app.include_router(device_auth_router, prefix="/api")
 app.include_router(play_sessions_router, prefix="/api")
 app.include_router(platform_router, prefix="/api")
+app.include_router(providers_router, prefix="/api")
 app.include_router(rom_router, prefix="/api")
 app.include_router(recommendations_router, prefix="/api")
 app.include_router(music_router, prefix="/api")

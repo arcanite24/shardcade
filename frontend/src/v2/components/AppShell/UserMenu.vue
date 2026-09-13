@@ -190,6 +190,13 @@ async function onLogout() {
         {{ t("settings.group-library") }}
       </div>
       <RMenuItem
+        v-if="isAdmin"
+        :to="{ name: ROUTES.PROVIDERS }"
+        icon="mdi-download-box-outline"
+        :label="t('providers.title')"
+        @click="open = false"
+      />
+      <RMenuItem
         v-if="canScan"
         :to="{ name: ROUTES.SCAN }"
         icon="mdi-radar"

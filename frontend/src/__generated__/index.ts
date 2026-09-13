@@ -167,6 +167,14 @@ export type { PlaySessionIngestResponse } from './models/PlaySessionIngestRespon
 export type { PlaySessionIngestResult } from './models/PlaySessionIngestResult';
 export type { PlaySessionSchema } from './models/PlaySessionSchema';
 export type { PouetCredit } from './models/PouetCredit';
+export type { ProviderFilesRequest } from './models/ProviderFilesRequest';
+export type { ProviderImportRequest } from './models/ProviderImportRequest';
+export type { ProviderJob } from './models/ProviderJob';
+export type { ProviderMegaFile } from './models/ProviderMegaFile';
+export type { ProviderOption } from './models/ProviderOption';
+export type { ProviderResult } from './models/ProviderResult';
+export type { ProviderSearch } from './models/ProviderSearch';
+export type { ProviderStatus } from './models/ProviderStatus';
 export type { RAGameRomAchievement } from './models/RAGameRomAchievement';
 export type { RAProgression } from './models/RAProgression';
 export type { RAUserGameProgression } from './models/RAUserGameProgression';
