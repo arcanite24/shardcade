@@ -40,6 +40,7 @@ export const ROUTES = {
   STREAM: "stream",
   STREAM_DESKTOP: "stream-desktop",
   SCAN: "scan",
+  PROVIDERS: "providers",
   UPLOAD: "upload",
   ACTIVITY: "activity",
   USER_PROFILE: "user-profile",
@@ -333,6 +334,15 @@ const routes = [
         },
         children: [
           {
+            path: "providers",
+            name: ROUTES.PROVIDERS,
+            meta: { title: "providers.title", bare: true },
+            components: {
+              default: () => import("@/views/Scan.vue"),
+              v2: v2For(ROUTES.PROVIDERS),
+            },
+          },
+          {
             path: "scan",
             name: ROUTES.SCAN,
             meta: {
@@ -610,6 +620,7 @@ const router = createRouter({
 const routePermissions: RoutePermissions[] = [
   { path: ROUTES.CLIENT_API_TOKENS, requiredScopes: ["me.write"] },
   { path: ROUTES.SCAN, requiredScopes: ["platforms.write"] },
+  { path: ROUTES.PROVIDERS, requiredScopes: ["tasks.run"] },
   { path: ROUTES.UPLOAD, requiredScopes: ["roms.write"] },
   { path: ROUTES.LIBRARY_MANAGEMENT, requiredScopes: ["platforms.write"] },
   { path: ROUTES.SCAN_SETTINGS, requiredScopes: ["platforms.write"] },

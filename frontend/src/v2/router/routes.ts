@@ -49,6 +49,7 @@ export const v2RouteComponents: Partial<Record<string, V2Route>> = {
   "stream-desktop": () => import("@/v2/views/Player/Desktop.vue"),
   // Wave 6 — Library Tools (Scan / Upload) + Pair
   scan: () => import("@/v2/views/Scan.vue"),
+  providers: () => import("@/v2/views/Providers.vue"),
   upload: () => import("@/v2/views/Upload.vue"),
   // Pair is wired via a top-level PairDispatcher (see plugins/router.ts); no
   // named-view entry is needed — the dispatcher picks v1 or v2 itself.
