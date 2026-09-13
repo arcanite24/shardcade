@@ -16,6 +16,7 @@ from handler.providers.downloads import (
     http_download,
     publish_file,
     selected_torrent_file,
+    torrent_download,
 )
 from handler.providers.jobs import status
 from handler.providers.mega import decrypt_file, xor
@@ -44,6 +45,46 @@ def encode(value):
 
 
 class ProviderChecks(unittest.TestCase):
+    def test_torrent_storage_error_fails_promptly_and_stops_transfer(self):
+        requests = []
+
+        def respond(request):
+            requests.append(request.url.path)
+            if request.url.path.endswith("auth/login"):
+                return httpx.Response(200, text="Ok.")
+            if request.url.path.endswith("torrents/info"):
+                return httpx.Response(
+                    200, json=[{"category": "romm-providers", "state": "error"}]
+                )
+            if request.url.path.endswith("torrents/files"):
+                return httpx.Response(
+                    200,
+                    json=[{"name": "Game.gba", "size": 12, "index": 0, "progress": 0}],
+                )
+            return httpx.Response(200)
+
+        client = httpx.Client(
+            base_url="http://qbit.test/api/v2/", transport=httpx.MockTransport(respond)
+        )
+        with (
+            patch("handler.providers.downloads.httpx.Client", return_value=client),
+            patch(
+                "handler.providers.downloads.PROVIDER_QBITTORRENT_URL",
+                "http://qbit.test",
+            ),
+            patch("handler.providers.downloads.PROVIDER_DOWNLOAD_PATH", str(self.root)),
+            patch(
+                "handler.providers.downloads.time.sleep",
+                side_effect=AssertionError("Unexpected wait"),
+            ),
+            self.assertRaisesRegex(ValueError, "permissions"),
+        ):
+            torrent_download(
+                {"info_hash": "0" * 40, "file_path": "Game.gba", "size": 12},
+                lambda **_: None,
+            )
+        self.assertEqual(requests.count("/api/v2/torrents/stop"), 2)
+
     def test_worker_failure_is_not_hidden_by_stale_progress(self):
         job = Mock()
         job.id = "interrupted"
