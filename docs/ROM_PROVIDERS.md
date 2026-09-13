@@ -63,6 +63,9 @@ Set a real qBittorrent password privately. Mount the same staging storage at
 qBittorrent path and `PROVIDER_DOWNLOAD_PATH` is the corresponding RomM path.
 The library's platform directories must be writable for imports. Keep enough free
 space for staging plus the final copy; MEGA also needs its encrypted staging file.
+Pre-create the shared save directory with ownership matching qBittorrent's runtime
+user. If RomM creates it as root with mode 0755, a downloader running as UID 1000
+cannot write there. Storage errors stop the job with an actionable permissions error.
 
 RomM uses its existing low-priority RQ workers. Downloads run sequentially so two
 imports cannot change the same torrent's file priorities concurrently. Only torrents

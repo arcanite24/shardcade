@@ -305,6 +305,12 @@ def torrent_download(entry: dict, report: Callable) -> Path:
                 response.raise_for_status()
             deadline = time.monotonic() + 7 * 86400
             while True:
+                info = client.get("torrents/info", params={"hashes": info_hash})
+                info.raise_for_status()
+                if any(t.get("state") == "error" for t in info.json()):
+                    raise ValueError(
+                        "qBittorrent cannot access its download files. Check save-directory permissions and volume mappings, then retry"
+                    )
                 response = client.get("torrents/files", params={"hash": info_hash})
                 response.raise_for_status()
                 selected = selected_torrent_file(response.json(), entry)

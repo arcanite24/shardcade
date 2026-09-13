@@ -80,7 +80,7 @@ revision in Multivac's Compose configuration. NeoStation's server URL is
 
 ## Validation and current limits
 
-- 9 provider checks, 5 endpoint tests, and 1,233 frontend tests passed.
+- 10 provider checks, 5 endpoint tests, and 1,233 frontend tests passed.
 - A real 240p Test Suite homebrew ROM was downloaded from Minerva and registered.
 - Native token refresh, anonymous denial, and an authenticated HTTP 206 range
   download passed on the built image. Physical handheld testing remains separate.
