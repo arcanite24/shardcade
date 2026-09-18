@@ -455,6 +455,10 @@ async function downloadFile(file: RomFileSchema) {
   await romApi.downloadRom({ rom: props.rom, fileIDs: [file.id] });
 }
 
+async function downloadFileUncompressed(file: RomFileSchema) {
+  await romApi.downloadRomFile({ file, uncompressed: true });
+}
+
 async function downloadSelected() {
   if (selectedCount.value === 0) return;
   await romApi.downloadRom({
@@ -829,6 +833,7 @@ async function refreshRom() {
           :can-delete="canDelete"
           @toggle="toggleFile(file)"
           @download="downloadFile(file)"
+          @download-uncompressed="downloadFileUncompressed(file)"
           @copy-link="copyFileLink(file)"
           @delete="deleteFiles([file])"
         />

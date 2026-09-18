@@ -136,6 +136,7 @@
   "download-link-copy-failed": "İndirme bağlantısı kopyalanamadı.",
   "download-named": "{name} indir",
   "download-selected": "Seçilenleri indir",
+  "download-uncompressed": "Sıkıştırılmamış olarak indir",
   "edit-rom": "ROM'u düzenle",
   "edit-rom-sections": "ROM bölümlerini düzenle",
   "favorite": "Favori",

@@ -561,6 +561,12 @@ def _archive_member_command(file_path: Path, member: str) -> list[str]:
     return [SEVEN_ZIP_PATH, "e", str(file_path), member, "-so", "-y", "-spd"]
 
 
+def read_archive_member(file_path: Path, member: str) -> Iterator[bytes]:
+    """Stream one exact archive member without extracting it to disk."""
+    for _name, _size, chunks in _stream_archive_members(file_path, [(member, 0)]):
+        yield from chunks
+
+
 def _list_archive_file_members(file_path: Path) -> list[tuple[str, int]]:
     """List `(member_path, size)` for every file member via `7zz l -slt -ba`.
 

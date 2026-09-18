@@ -136,6 +136,7 @@
   "download-link-copy-failed": "A letöltési link másolása sikertelen.",
   "download-named": "{name} letöltése",
   "download-selected": "Kiválasztottak letöltése",
+  "download-uncompressed": "Letöltés kitömörítve",
   "edit-rom": "ROM szerkesztése",
   "edit-rom-sections": "ROM szakaszainak szerkesztése",
   "favorite": "Kedvenc",

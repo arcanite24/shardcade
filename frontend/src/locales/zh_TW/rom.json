@@ -136,6 +136,7 @@
   "download-link-copy-failed": "無法複製下載連結。",
   "download-named": "下載 {name}",
   "download-selected": "下載所選項目",
+  "download-uncompressed": "下載解壓縮後的檔案",
   "edit-rom": "編輯 ROM",
   "edit-rom-sections": "編輯 ROM 區段",
   "favorite": "喜好",

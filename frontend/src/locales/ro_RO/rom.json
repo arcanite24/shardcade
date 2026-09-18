@@ -136,6 +136,7 @@
   "download-link-copy-failed": "Linkul de descărcare nu a putut fi copiat.",
   "download-named": "Descarcă {name}",
   "download-selected": "Descarcă selecția",
+  "download-uncompressed": "Descarcă necomprimat",
   "edit-rom": "Editează ROM-ul",
   "edit-rom-sections": "Editează secțiunile ROM-ului",
   "favorite": "Favorit",
