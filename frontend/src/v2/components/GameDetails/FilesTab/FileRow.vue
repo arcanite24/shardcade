@@ -43,6 +43,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "toggle"): void;
   (e: "download"): void;
+  (e: "downloadUncompressed"): void;
   (e: "copyLink"): void;
   (e: "delete"): void;
 }>();
@@ -214,6 +215,15 @@ const hasAnyHash = computed(
         :tooltip="t('rom.download-file')"
         :aria-label="t('rom.download-named', { name: relativePath })"
         @click="emit('download')"
+      />
+      <RBtn
+        v-if="file.archive_members?.length"
+        icon="mdi-folder-download-outline"
+        variant="text"
+        size="small"
+        :tooltip="t('rom.download-uncompressed')"
+        :aria-label="`${t('rom.download-uncompressed')}: ${relativePath}`"
+        @click="emit('downloadUncompressed')"
       />
       <RBtn
         icon="mdi-link-variant"

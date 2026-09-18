@@ -136,6 +136,7 @@
   "download-link-copy-failed": "Nepodařilo se zkopírovat odkaz ke stažení.",
   "download-named": "Stáhnout {name}",
   "download-selected": "Stáhnout vybrané",
+  "download-uncompressed": "Stáhnout rozbalený",
   "edit-rom": "Upravit ROM",
   "edit-rom-sections": "Upravit sekce ROM",
   "favorite": "Oblíbené",

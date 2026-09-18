@@ -136,6 +136,7 @@
   "download-link-copy-failed": "Impossible de copier le lien de téléchargement.",
   "download-named": "Télécharger {name}",
   "download-selected": "Télécharger la sélection",
+  "download-uncompressed": "Télécharger décompressé",
   "edit-rom": "Modifier la ROM",
   "edit-rom-sections": "Modifier les sections de la ROM",
   "favorite": "Favori",

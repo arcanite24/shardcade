@@ -136,6 +136,7 @@
   "download-link-copy-failed": "ダウンロードリンクをコピーできませんでした。",
   "download-named": "{name}をダウンロード",
   "download-selected": "選択をダウンロード",
+  "download-uncompressed": "解凍してダウンロード",
   "edit-rom": "ROMを編集",
   "edit-rom-sections": "ROMセクションを編集",
   "favorite": "お気に入り",

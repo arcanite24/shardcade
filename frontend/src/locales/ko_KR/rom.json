@@ -136,6 +136,7 @@
   "download-link-copy-failed": "다운로드 링크를 복사할 수 없습니다.",
   "download-named": "{name} 다운로드",
   "download-selected": "선택 항목 다운로드",
+  "download-uncompressed": "압축 해제하여 다운로드",
   "edit-rom": "ROM 편집",
   "edit-rom-sections": "ROM 섹션 편집",
   "favorite": "즐겨찾기",

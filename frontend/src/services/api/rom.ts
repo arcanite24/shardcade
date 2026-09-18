@@ -8,6 +8,7 @@ import type {
   ManualMetadata,
   PhysicalRomCreateForm,
   RecommendedRomSchema,
+  RomFileSchema,
   RomUserData,
   RomUserSchema,
   RomFileUserSchema,
@@ -615,6 +616,19 @@ async function downloadRom({
   return triggerFileDownload(getDownloadPath({ rom, fileIDs }));
 }
 
+async function downloadRomFile({
+  file,
+  uncompressed = false,
+}: {
+  file: RomFileSchema;
+  uncompressed?: boolean;
+}) {
+  const query = uncompressed ? "?uncompressed=true" : "";
+  return triggerFileDownload(
+    `/api/roms/${file.id}/files/content/${encodeURIComponent(file.file_name)}${query}`,
+  );
+}
+
 // A platform/collection selector is expanded server-side into the full ROM
 // list, keeping the URL short (an explicit `romIDs` list can overflow the
 // browser's URL length limit for large libraries). Pass exactly one selector;
@@ -1138,6 +1152,7 @@ export default {
   getRandomRom,
   getRomByMetadataProvider,
   downloadRom,
+  downloadRomFile,
   bulkDownloadRoms,
   searchRom,
   createPhysicalRom,

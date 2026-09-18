@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import status
@@ -145,6 +145,46 @@ def test_rom_file_served_as_attachment(
     assert r.status_code == status.HTTP_200_OK
     assert r.headers["content-type"].startswith("application/octet-stream")
     assert r.headers["content-disposition"].startswith("attachment")
+
+
+def test_archive_download_can_stream_largest_member_uncompressed(
+    client: TestClient,
+    access_token: str,
+    admin_user: User,
+    platform: Platform,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    rom = _make_rom(admin_user, platform)
+    file = _add_file(rom, "game.zip", RomFileCategory.GAME)
+    db_rom_handler.update_rom_file(
+        file.id,
+        {
+            "archive_members": [
+                {"name": "notes.txt", "size": 2},
+                {"name": "folder/game.gba", "size": 3},
+            ]
+        },
+    )
+    monkeypatch.setattr(
+        files_endpoint.fs_rom_handler,
+        "validate_path",
+        lambda _path: Path("/library/game.zip"),
+    )
+    read_archive_member = Mock(return_value=iter([b"rom"]))
+    monkeypatch.setattr(files_endpoint, "read_archive_member", read_archive_member)
+
+    r = client.get(
+        f"/api/roms/{file.id}/files/content/game.zip?uncompressed=true",
+        headers=_auth(access_token),
+    )
+
+    assert r.status_code == status.HTTP_200_OK
+    assert r.content == b"rom"
+    assert r.headers["content-length"] == "3"
+    assert "game.gba" in r.headers["content-disposition"]
+    read_archive_member.assert_called_once_with(
+        Path("/library/game.zip"), "folder/game.gba"
+    )
 
 
 def test_content_type_derived_from_db_not_path_param(

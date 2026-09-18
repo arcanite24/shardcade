@@ -136,6 +136,7 @@
   "download-link-copy-failed": "Não foi possível copiar o link de download.",
   "download-named": "Baixar {name}",
   "download-selected": "Baixar selecionados",
+  "download-uncompressed": "Baixar descompactado",
   "edit-rom": "Editar ROM",
   "edit-rom-sections": "Editar seções da ROM",
   "favorite": "Favorito",

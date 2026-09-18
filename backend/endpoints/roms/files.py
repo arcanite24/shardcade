@@ -1,11 +1,13 @@
 from datetime import datetime, timezone
+from pathlib import PurePosixPath
 from typing import Annotated
+from urllib.parse import quote
 
 from anyio import Path
-from fastapi import Body, HTTPException
+from fastapi import Body, HTTPException, Query
 from fastapi import Path as PathVar
 from fastapi import Request, status
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from starlette.responses import FileResponse
 
 from config import DEV_MODE, DISABLE_DOWNLOAD_ENDPOINT_AUTH
@@ -21,6 +23,7 @@ from logger.formatter import highlight as hl
 from logger.logger import log
 from models.permission import PermAction, PermEntity
 from models.rom import DOCUMENT_CATEGORIES, RomFileCategory
+from utils.archives import read_archive_member
 from utils.audio_tags import guess_audio_media_type
 from utils.media_types import (
     guess_media_file_type,
@@ -79,6 +82,10 @@ async def get_romfile_content(
     request: Request,
     id: Annotated[int, PathVar(description="Rom file internal id.", ge=1)],
     file_name: Annotated[str, PathVar(description="File name to download")],
+    uncompressed: Annotated[
+        bool,
+        Query(description="Stream the largest indexed archive member."),
+    ] = False,
 ):
     """Download a rom file."""
 
@@ -106,6 +113,30 @@ async def get_romfile_content(
     log.info(
         f"User {hl(current_username, color=BLUE)} is downloading {hl(file.file_name)}"
     )
+
+    if uncompressed:
+        if not file.archive_members:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File has no indexed archive members",
+            )
+
+        member = max(file.archive_members, key=lambda item: item.get("size") or 0)
+        member_name = member["name"]
+        download_name = PurePosixPath(member_name).name
+        rom_path = fs_rom_handler.validate_path(file.full_path)
+        return StreamingResponse(
+            read_archive_member(rom_path, member_name),
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": (
+                    "attachment; "
+                    f"filename*=UTF-8''{quote(download_name)}; "
+                    f'filename="{quote(download_name)}"'
+                ),
+                "Content-Length": str(member.get("size") or 0),
+            },
+        )
 
     # Derive content type / disposition / download name from the trusted DB
     # record, never from the client-supplied file_name path param — otherwise a
