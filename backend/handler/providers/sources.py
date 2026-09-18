@@ -42,6 +42,8 @@ def download_url(value: str) -> str:
         raise ValueError("A public HTTPS download link is required")
     if not any(
         host == domain or host.endswith("." + domain) for domain in DOWNLOAD_HOSTS
+    ) and not re.fullmatch(
+        r"vikingfile\.[0-9a-f]{32}\.r2\.cloudflarestorage\.com", host
     ):
         raise ValueError("This download host is not supported")
     return value
@@ -81,7 +83,9 @@ def option(url: str, label: str = "") -> ProviderOption | None:
     method: Literal["mega", "http", "verify"] = (
         "mega"
         if host in ("mega.nz", "mega.co.nz")
-        else "http" if host.endswith(("edgeemu.net", "vikingfile.com")) else "verify"
+        else "http"
+        if host.endswith(("edgeemu.net", "vikingfile.com"))
+        else "verify"
     )
     return ProviderOption(label=label or host, method=method, url=url)
 

@@ -1,6 +1,23 @@
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
+
+from handler.providers.sources import download_url
+
+
+def test_vikingfile_r2_download_host_is_narrowly_allowed():
+    download_url(
+        "https://vikingfile.04b3d96d52475741e6b10f97f0a84a16.r2.cloudflarestorage.com/file"
+    )
+
+    for url in (
+        "https://other.04b3d96d52475741e6b10f97f0a84a16.r2.cloudflarestorage.com/file",
+        "https://vikingfile.invalid.r2.cloudflarestorage.com/file",
+        "https://vikingfile.04b3d96d52475741e6b10f97f0a84a16.r2.cloudflarestorage.com.evil.test/file",
+    ):
+        with pytest.raises(ValueError):
+            download_url(url)
 
 
 def test_providers_require_authentication(client: TestClient):
