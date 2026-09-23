@@ -238,8 +238,10 @@ watch(provider, () => {
   platform.value = "";
   page.value = 1;
 });
-watch(canManage, (allowed) => {
-  if (allowed) void loadStatus();
+watch(canManage, async (allowed) => {
+  if (!allowed) return;
+  await loadStatus();
+  if (query.value && state.value?.enabled) await search(false);
 });
 useIntervalFn(() => {
   if (!document.hidden) void loadStatus();
@@ -285,13 +287,14 @@ onBeforeUnmount(() => {
       <section class="providers__index" :aria-label="t('providers.index')">
         <div>
           <h2>{{ t("providers.index") }}</h2>
-          <p v-if="state?.index_ready">
+          <p v-if="!state && !statusError">{{ t("common.loading") }}</p>
+          <p v-else-if="state?.index_ready">
             {{ t("providers.index-ready", { count: n(state.records || 0) }) }}
             <span v-if="state.indexed_at">{{
               formatTimestamp(state.indexed_at, locale)
             }}</span>
           </p>
-          <p v-else>{{ t("providers.index-empty") }}</p>
+          <p v-else-if="state">{{ t("providers.index-empty") }}</p>
         </div>
         <RBtn
           :disabled="!state?.enabled || indexBusy || busy"
@@ -317,7 +320,7 @@ onBeforeUnmount(() => {
         >
       </nav>
       <section v-if="tab === 'search'" :aria-label="t('common.search')">
-        <form class="providers__search" @submit.prevent="search()">
+        <form v-if="state" class="providers__search" @submit.prevent="search()">
           <RSelect
             v-model="provider"
             :items="providers"
@@ -351,8 +354,13 @@ onBeforeUnmount(() => {
             >{{ t("common.search") }}</RBtn
           >
         </form>
+        <RProgressLinear
+          v-if="!state && !statusError"
+          indeterminate
+          :aria-label="t('common.loading')"
+        />
         <RAlert v-if="error" type="error" class="mt-4">{{ error }}</RAlert>
-        <p v-if="!results && !loading && !error" class="providers__empty">
+        <p v-if="state && !results && !loading && !error" class="providers__empty">
           {{ t("providers.search-hint") }}
         </p>
         <p v-if="results?.items.length === 0" class="providers__empty">
@@ -426,7 +434,12 @@ onBeforeUnmount(() => {
         </div>
       </section>
       <section v-else :aria-label="t('providers.downloads')">
-        <p v-if="!state?.jobs?.length" class="providers__empty">
+        <RProgressLinear
+          v-if="!state && !statusError"
+          indeterminate
+          :aria-label="t('common.loading')"
+        />
+        <p v-else-if="state && !state.jobs?.length" class="providers__empty">
           {{ t("providers.no-downloads") }}
         </p>
         <article

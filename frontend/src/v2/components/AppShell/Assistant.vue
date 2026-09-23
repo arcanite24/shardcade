@@ -53,10 +53,11 @@ async function send(text = input.value) {
   busy.value = true;
   await scrollToEnd();
   try {
-    const response = await api.post<Reply>("/assistant/chat", {
-      message,
-      history,
-    });
+    const response = await api.post<Reply>(
+      "/assistant/chat",
+      { message, history },
+      { timeout: 600000 },
+    );
     turns.value.push({ role: "assistant", content: response.data.message });
     action.value = response.data.action;
   } catch (cause) {

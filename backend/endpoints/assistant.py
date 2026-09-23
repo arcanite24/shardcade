@@ -369,7 +369,7 @@ async def chat(request: Request, body: ChatRequest) -> dict:
     try:
         for _ in range(6):
             # The bridge is a fixed, private operator endpoint.
-            async with httpx.AsyncClient(timeout=95) as client:
+            async with httpx.AsyncClient(timeout=155) as client:
                 response = await client.post(
                     BRIDGE_URL,
                     headers={"x-shardcade-key": BRIDGE_KEY},
