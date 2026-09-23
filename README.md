@@ -22,7 +22,8 @@ see [upstream RomM](https://github.com/rommapp/romm#readme).
 - **Selective downloads:** fetch the chosen torrent file by exact path and size,
   rather than downloading an entire collection or trusting unstable file indexes.
 - **Import queue:** progress, cooperative cancellation, retry, safe staging,
-  no-overwrite publication, and automatic library registration.
+  no-overwrite publication, archive extraction, automatic library registration,
+  and a targeted metadata scan before the job completes.
 - **HTTP and MEGA:** validated HTTP resume, public MEGA folder/file selection,
   streamed decryption, and integrity verification before import.
 - **Native access controls:** administrator-only provider operations using RomM's
