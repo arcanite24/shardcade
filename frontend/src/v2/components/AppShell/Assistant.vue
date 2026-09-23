@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { RBtn, RDialog, RTextField } from "@v2/lib";
+import axios from "axios";
 import MarkdownIt from "markdown-it";
 import { computed, nextTick, ref, watch } from "vue";
 import type { Turn } from "@/__generated__";
@@ -58,8 +59,14 @@ async function send(text = input.value) {
     });
     turns.value.push({ role: "assistant", content: response.data.message });
     action.value = response.data.action;
-  } catch {
-    error.value = "The assistant could not finish that request. Try again.";
+  } catch (cause) {
+    const detail = axios.isAxiosError(cause)
+      ? cause.response?.data?.detail
+      : null;
+    error.value =
+      typeof detail === "string"
+        ? detail
+        : "The assistant could not finish that request. Try again.";
   } finally {
     busy.value = false;
     await scrollToEnd();
@@ -71,13 +78,14 @@ async function confirmAction() {
   busy.value = true;
   error.value = "";
   try {
-    const response = await api.post<{ job_id: string; message: string }>(
-      "/assistant/confirm",
-      { action_id: action.value.id },
-    );
+    const response = await api.post<{
+      job_id?: string;
+      job_ids?: string[];
+      message: string;
+    }>("/assistant/confirm", { action_id: action.value.id });
     turns.value.push({
       role: "assistant",
-      content: `${response.data.message} (job ${response.data.job_id}). Ask me to check its progress.`,
+      content: `${response.data.message} ${response.data.job_ids?.length ? `(${response.data.job_ids.length} jobs)` : `(job ${response.data.job_id})`} Ask me to check progress.`,
     });
     action.value = null;
   } catch {
@@ -128,8 +136,8 @@ async function confirmAction() {
                 Search releases, inspect the library, or run a platform task.
               </p>
               <p>
-                Your messages and relevant library results are sent to
-                OpenRouter.
+                Messages and relevant library results are sent to OpenAI through
+                Codex.
               </p>
               <div class="r-v2-assistant__suggestions">
                 <RBtn
@@ -294,6 +302,7 @@ async function confirmAction() {
 .r-v2-assistant__action p {
   color: var(--r-color-fg-muted);
   overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 .r-v2-assistant__form {
   display: flex;
