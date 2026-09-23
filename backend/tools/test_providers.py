@@ -5,7 +5,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -18,7 +18,7 @@ from handler.providers.downloads import (
     selected_torrent_file,
     torrent_download,
 )
-from handler.providers.jobs import status
+from handler.providers.jobs import import_rom, status
 from handler.providers.mega import decrypt_file, xor
 from handler.providers.minerva import (
     build_index,
@@ -28,6 +28,7 @@ from handler.providers.minerva import (
     search_index,
 )
 from handler.providers.sources import download_url, parse_edge, parse_vimm
+from utils.zip_cache import ensure_zipfile_writable
 
 
 def encode(value):
@@ -45,6 +46,82 @@ def encode(value):
 
 
 class ProviderChecks(unittest.TestCase):
+    def test_archive_import_extracts_then_scans_registered_rom(self):
+        library = self.root / "library"
+        library.mkdir()
+        staging = self.root / "http"
+        staging.mkdir()
+        events = []
+        result = {
+            "id": "axekin:game",
+            "provider": "axekin",
+            "name": "Game",
+            "source_url": "https://example.org/game",
+            "options": [
+                {
+                    "label": "HTTP",
+                    "method": "http",
+                    "url": "https://example.org/game.zip",
+                }
+            ],
+        }
+
+        def download(_url, path, _report, **_kwargs):
+            path.write_bytes(b"archive")
+            return "Game.zip"
+
+        def extract(_source, destination, **_kwargs):
+            self.assertEqual(_source.name, "Game.zip")
+            output = destination / "Game.3ds"
+            output.write_bytes(b"rom")
+            events.append("extracted")
+            return output
+
+        def scan(_platform_id, _rom_id):
+            self.assertEqual((library / "Game.3ds").read_bytes(), b"rom")
+            events.append("scanned")
+
+        platform = Mock(id=7, fs_slug="n3ds")
+        reports = []
+        with (
+            patch("handler.providers.jobs.PROVIDER_DOWNLOAD_PATH", str(self.root)),
+            patch("handler.providers.jobs.http_download", side_effect=download),
+            patch(
+                "handler.providers.jobs._list_archive_file_members",
+                return_value=[("Game.3ds", 3)],
+            ),
+            patch(
+                "handler.providers.jobs.extract_largest_archive_member",
+                side_effect=extract,
+            ),
+            patch(
+                "handler.providers.jobs.register_rom",
+                new_callable=AsyncMock,
+                return_value=42,
+            ),
+            patch("handler.providers.jobs.scan_imported_rom", side_effect=scan),
+            patch(
+                "handler.database.db_platform_handler.get_platform",
+                return_value=platform,
+            ),
+            patch(
+                "handler.filesystem.fs_rom_handler.get_roms_upload_path",
+                return_value="/roms/n3ds",
+            ),
+            patch(
+                "handler.filesystem.fs_rom_handler.validate_path", return_value=library
+            ),
+        ):
+            import_rom(
+                {"result": result, "option": 0, "platform_id": 7},
+                lambda **values: reports.append(values),
+            )
+
+        self.assertEqual(events, ["extracted", "scanned"])
+        self.assertEqual(reports[-1]["rom_id"], 42)
+        self.assertFalse((library / "Game.zip").exists())
+        self.assertFalse((staging / "axekin_game").exists())
+
     def test_torrent_storage_error_fails_promptly_and_stops_transfer(self):
         requests = []
 
@@ -96,6 +173,7 @@ class ProviderChecks(unittest.TestCase):
         self.assertEqual(status(job).state, "deferred")
 
     def setUp(self):
+        ensure_zipfile_writable()
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)

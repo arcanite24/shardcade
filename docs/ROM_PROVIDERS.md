@@ -77,9 +77,14 @@ remove completed staging data through qBittorrent when no imports are active.
 The Downloads tab shows progress, errors, cancellation, and retry. Cancellation is
 cooperative; a waiting job is skipped when its turn reaches the worker. HTTP retries
 resume only with a matching strong ETag. Files are checked, copied through a temporary
-file, and registered with RomM. Existing filenames are never overwritten. A later
-metadata scan can enrich newly imported ROMs with artwork and metadata. If database
-registration fails after publication, the error explicitly requests a library scan.
+file, and registered with RomM. Compressed downloads extract their largest ROM file
+into staging first; the archive is not added to the library. Extraction is bounded by
+available disk space, and existing files are never overwritten. Once registered, a
+targeted scan uses the enabled metadata sources and the import waits for it to finish.
+If metadata scanning fails, the imported ROM remains available and the job shows a
+warning. If database registration fails after publication, the error explicitly
+requests a library scan. Multi-file disc archives need manual import because choosing
+one track would lose the others.
 
 ## API and handheld clients
 

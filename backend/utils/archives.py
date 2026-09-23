@@ -623,14 +623,21 @@ def _list_archive_file_members(file_path: Path) -> list[tuple[str, int]]:
 
 
 def _extract_member_to_dir(
-    file_path: Path, member: str, dest_dir: Path, deadline: float
+    file_path: Path,
+    member: str,
+    dest_dir: Path,
+    deadline: float,
+    max_bytes: int | None = None,
 ) -> Path | None:
     """Stream one archive member into `dest_dir`, named after its basename.
 
     Returns None (leaving no partial file) when extraction fails or exceeds
-    the deadline.
+    the deadline or byte limit.
     """
     dest_path = dest_dir / Path(member).name
+    if dest_path.resolve() == file_path.resolve():
+        log.error(f"Archive member {member} would overwrite its source {file_path}")
+        return None
     try:
         # stderr goes to an unlinked temp file rather than a pipe: a pipe can
         # fill and block the extractor while this thread waits on stdout,
@@ -646,13 +653,20 @@ def _extract_member_to_dir(
                 ) as process,
             ):
                 assert process.stdout is not None
+                copied = 0
                 while chunk := process.stdout.read(FILE_READ_CHUNK_SIZE):
-                    if time.monotonic() > deadline:
+                    timed_out = time.monotonic() > deadline
+                    too_large = (
+                        max_bytes is not None and copied + len(chunk) > max_bytes
+                    )
+                    if timed_out or too_large:
                         process.terminate()
-                        log.error(f"Extraction of {member} from {file_path} timed out")
+                        reason = "timed out" if timed_out else "exceeded its size limit"
+                        log.error(f"Extraction of {member} from {file_path} {reason}")
                         dest_path.unlink(missing_ok=True)
                         return None
                     dest_file.write(chunk)
+                    copied += len(chunk)
 
             if process.returncode != 0:
                 # Surface the extractor's own reason (e.g. "Unsupported
@@ -673,7 +687,9 @@ def _extract_member_to_dir(
         return None
 
 
-def extract_largest_archive_member(file_path: Path, dest_dir: Path) -> Path | None:
+def extract_largest_archive_member(
+    file_path: Path, dest_dir: Path, max_bytes: int | None = None
+) -> Path | None:
     """Extract an archive's largest file member into `dest_dir` via 7zz.
 
     Compressed tarballs (.tgz/.tbz2/.txz) list only their inner .tar, so one
@@ -685,11 +701,10 @@ def extract_largest_archive_member(file_path: Path, dest_dir: Path) -> Path | No
 
     for _ in range(2):
         members = _list_archive_file_members(source)
+        member, size = max(members, key=lambda m: m[1]) if members else ("", 0)
         extracted = (
-            _extract_member_to_dir(
-                source, max(members, key=lambda m: m[1])[0], dest_dir, deadline
-            )
-            if members
+            _extract_member_to_dir(source, member, dest_dir, deadline, max_bytes)
+            if member and (max_bytes is None or size <= max_bytes)
             else None
         )
         if source != file_path:
