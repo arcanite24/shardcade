@@ -297,11 +297,11 @@ def scan_imported_rom(platform_id: int, rom_id: int) -> None:
         on_failure=report_scan_failure,
         platform_ids=[platform_id],
         metadata_sources=sources,
-        scan_type=ScanType.QUICK,
+        scan_type=ScanType.UNMATCHED,
         roms_ids=[rom_id],
         job_timeout=SCAN_TIMEOUT,
         result_ttl=TASK_RESULT_TTL,
-        meta=scan_job_meta(ScanType.QUICK),
+        meta=scan_job_meta(ScanType.UNMATCHED),
     )
     while scan.get_status(refresh=True) in (
         JobStatus.QUEUED,

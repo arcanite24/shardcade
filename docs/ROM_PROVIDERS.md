@@ -80,7 +80,8 @@ resume only with a matching strong ETag. Files are checked, copied through a tem
 file, and registered with RomM. Compressed downloads extract their largest ROM file
 into staging first; the archive is not added to the library. Extraction is bounded by
 available disk space, and existing files are never overwritten. Once registered, a
-targeted scan uses the enabled metadata sources and the import waits for it to finish.
+targeted unmatched scan uses the enabled metadata sources and the import waits for it
+to finish. A quick scan would skip metadata lookups for the already registered ROM.
 If metadata scanning fails, the imported ROM remains available and the job shows a
 warning. If database registration fails after publication, the error explicitly
 requests a library scan. Multi-file disc archives need manual import because choosing

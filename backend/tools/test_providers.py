@@ -18,7 +18,7 @@ from handler.providers.downloads import (
     selected_torrent_file,
     torrent_download,
 )
-from handler.providers.jobs import import_rom, status
+from handler.providers.jobs import import_rom, scan_imported_rom, status
 from handler.providers.mega import decrypt_file, xor
 from handler.providers.minerva import (
     build_index,
@@ -46,6 +46,21 @@ def encode(value):
 
 
 class ProviderChecks(unittest.TestCase):
+    def test_imported_rom_uses_unmatched_metadata_scan(self):
+        from handler.scan_handler import ScanType
+
+        with (
+            patch(
+                "tasks.scheduled.scan_library.enabled_metadata_sources",
+                return_value=["ss"],
+            ),
+            patch("handler.redis_handler.scan_queue.enqueue") as enqueue,
+        ):
+            enqueue.return_value.get_status.return_value = JobStatus.FINISHED
+            scan_imported_rom(7, 42)
+        self.assertEqual(enqueue.call_args.kwargs["roms_ids"], [42])
+        self.assertEqual(enqueue.call_args.kwargs["scan_type"], ScanType.UNMATCHED)
+
     def test_archive_import_extracts_then_scans_registered_rom(self):
         library = self.root / "library"
         library.mkdir()
