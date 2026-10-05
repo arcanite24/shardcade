@@ -40,6 +40,10 @@ see [upstream RomM](https://github.com/rommapp/romm#readme).
 | **Edge Emulation** | Website search       | HTTP download                                         |
 | **Vimm's Lair**    | Vault search         | Browser verification, then generated download URL     |
 | **StartGame**      | Platform collections | Website login when required, then direct or MEGA link |
+| **RomsTime**       | Paginated catalog search | Region, format, and encryption selection; fresh single-file downloads |
+
+Provider searches and version lists are cached in the browser for six hours per account.
+The download queue stays live, and **Refresh results** fetches an updated catalog page.
 
 Provider workflows were adapted from the account owner's Phobos ROM manager.
 Account requirements, quotas, verification screens, and unavailable files are still

@@ -8,19 +8,20 @@ import unicodedata
 from typing import Literal
 
 import httpx
+from fastapi import HTTPException, Request
+from pydantic import BaseModel, Field
+from rq.exceptions import NoSuchJobError
+from rq.job import Job
+from starlette.concurrency import run_in_threadpool
+
 from decorators.auth import protected_route
 from endpoints.providers import resolve
 from endpoints.responses.providers import ProviderId, ProviderImportRequest
-from fastapi import HTTPException, Request
 from handler.auth.constants import Scope
 from handler.auth.dependencies import assert_admin
 from handler.database import db_platform_handler, db_rom_handler
 from handler.providers import jobs, minerva, sources
 from handler.redis_handler import redis_client
-from pydantic import BaseModel, Field
-from rq.exceptions import NoSuchJobError
-from rq.job import Job
-from starlette.concurrency import run_in_threadpool
 from tasks.registry import enqueue_task
 from utils.router import APIRouter
 
@@ -50,13 +51,14 @@ TOOL_PARAMETERS = {
     "search_provider": {
         "provider": {
             "type": "string",
-            "enum": ["minerva", "axekin", "vimm", "edgeemu", "startgame"],
+            "enum": ["minerva", "axekin", "vimm", "edgeemu", "startgame", "romstime"],
         },
         "query": {"type": "string"},
         "platform": {"type": "string"},
         "region": {"type": "string"},
     },
     "search_library": {"query": {"type": "string"}},
+    "get_provider_result": {"result_id": {"type": "string"}},
     "list_platforms": {},
     "list_jobs": {},
     "list_tasks": {},
@@ -75,7 +77,8 @@ TOOL_PARAMETERS = {
     },
 }
 DESCRIPTIONS = {
-    "search_provider": "Search ROM providers. Use platform filesystem slug and region to narrow matches. Returns exact result IDs, release filenames, collection and size.",
+    "search_provider": "Search ROM providers. Use platform filesystem slug and region to narrow matches. RomsTime regions are selected in download options, so leave region empty there. Get provider result details to choose a release before proposing an import.",
+    "get_provider_result": "Get all download options for a search result ID, including region, format and encryption. Choose the matching zero-based option index for imports.",
     "search_library": "Search ROMs already in this Shardcade library.",
     "list_platforms": "List destination platforms and their filesystem slugs.",
     "list_jobs": "Check provider download/import jobs and progress.",
@@ -132,9 +135,19 @@ def _title_words(value: str) -> set[str]:
 
 
 async def _tool(name: str, args: dict) -> tuple[dict | list, dict | None]:
+    if name == "get_provider_result":
+        item = await resolve(_clip(str(args.get("result_id", "")), 128))
+        return item.model_dump(exclude_none=True), None
     if name == "search_provider":
         provider: ProviderId = args.get("provider", "minerva")
-        if provider not in ("minerva", "axekin", "vimm", "edgeemu", "startgame"):
+        if provider not in (
+            "minerva",
+            "axekin",
+            "vimm",
+            "edgeemu",
+            "startgame",
+            "romstime",
+        ):
             raise ValueError("Unknown provider")
         query = _clip(str(args.get("query", "")), 200)
         platform = _clip(str(args.get("platform", "")), 100)
@@ -240,7 +253,9 @@ async def _tool(name: str, args: dict) -> tuple[dict | list, dict | None]:
             "platform_id": platform.id,
             "option": option,
             "label": f"Import {result.filename or result.name} to {platform.name}",
-            "details": f"{result.collection} · {result.region} · {result.size or 'unknown'} bytes",
+            "details": selected.label
+            if result.provider == "romstime"
+            else f"{result.collection} · {result.region} · {result.size or 'unknown'} bytes",
         }
         return {"proposal": action["label"], "requires_confirmation": True}, action
     if name == "propose_task":

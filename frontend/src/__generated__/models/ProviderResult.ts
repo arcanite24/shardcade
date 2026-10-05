@@ -5,7 +5,8 @@
 import type { ProviderOption } from "./ProviderOption";
 export type ProviderResult = {
   id: string;
-  provider: "minerva" | "axekin" | "vimm" | "edgeemu" | "startgame";
+  provider:
+    "minerva" | "axekin" | "vimm" | "edgeemu" | "startgame" | "romstime";
   name: string;
   platform?: string;
   region?: string;

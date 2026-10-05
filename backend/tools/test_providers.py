@@ -1,6 +1,7 @@
 """Run with `python -m unittest discover -s tools -p test_providers.py`."""
 
 import hashlib
+import json
 import tempfile
 import unittest
 import zipfile
@@ -27,7 +28,13 @@ from handler.providers.minerva import (
     parse_torrent,
     search_index,
 )
-from handler.providers.sources import download_url, parse_edge, parse_vimm
+from handler.providers.sources import (
+    download_url,
+    parse_edge,
+    parse_romstime,
+    parse_vimm,
+    romstime_options,
+)
 from utils.zip_cache import ensure_zipfile_writable
 
 
@@ -46,6 +53,76 @@ def encode(value):
 
 
 class ProviderChecks(unittest.TestCase):
+    def test_romstime_catalog_and_fresh_download_descriptors(self):
+        import asyncio
+
+        game_id = "44061ba4-51c2-44a3-83b3-b3a571dc108f"
+        source_id = "df7aea7f-31a7-498b-8882-717e2c016351"
+        version_id = "92b4bd38-fe13-44ac-8d1f-809c50bfb324"
+
+        def page(field, rows):
+            payload = json.dumps({field: rows})
+            return (
+                "<script>self.__next_f.push(" + json.dumps([1, payload]) + ")</script>"
+            )
+
+        catalog = page(
+            "roms",
+            [
+                {
+                    "id": game_id,
+                    "title": "Mario Kart 7",
+                    "platform": "Nintendo 3DS",
+                    "display_region": "United States",
+                    "computed_min_size_bytes": 100,
+                }
+            ],
+        )
+        item = parse_romstime(catalog)[0]
+        self.assertEqual((item.platform, item.region, item.size), ("3ds", "USA", 100))
+        versions = page(
+            "regionalVersions",
+            [
+                {
+                    "id": version_id,
+                    "region_code": "USA",
+                    "format": "3DS Format",
+                    "crypto_state": "decrypted",
+                    "filename": "Game.3ds",
+                    "download_sources": [
+                        {"id": source_id, "status": "active", "provider": "uploadg"},
+                        {
+                            "id": source_id,
+                            "status": "active",
+                            "provider": "moondl",
+                            "part_group": "parts",
+                        },
+                        {"id": source_id, "status": "inactive", "provider": "moondl"},
+                        {"id": source_id, "status": "active", "provider": "unknown"},
+                    ],
+                }
+            ],
+        )
+        with patch(
+            "handler.providers.sources.fetch_text",
+            AsyncMock(return_value=(versions, {})),
+        ):
+            expanded = asyncio.run(romstime_options(item))
+        self.assertEqual(len(expanded.options), 1)
+        selected = expanded.options[0]
+        self.assertIn("USA · 3DS Format · decrypted", selected.label)
+        self.assertIn("versionId=" + version_id, selected.url)
+        self.assertIn("sourceId=" + source_id, selected.url)
+        self.assertEqual(selected.method, "http")
+        self.assertEqual(selected.filename, "")
+        download_url(selected.url)
+        download_url("https://worker.romstime.com/dl/" + source_id)
+        download_url("https://ms215.moondl.com/d/token/Game.3ds")
+        with self.assertRaises(ValueError):
+            download_url("https://worker.romstime.com.evil.test/dl/file")
+        with self.assertRaises(ValueError):
+            parse_romstime("<html>Verification required</html>")
+
     def test_imported_rom_uses_unmatched_metadata_scan(self):
         from handler.scan_handler import ScanType
 
@@ -319,7 +396,7 @@ class ProviderChecks(unittest.TestCase):
                 "content-disposition": 'attachment; filename="Game.zip"',
             }
             if offset:
-                headers["content-range"] = f"bytes {offset}-{len(data)-1}/{len(data)}"
+                headers["content-range"] = f"bytes {offset}-{len(data) - 1}/{len(data)}"
             return httpx.Response(
                 206 if offset else 200, headers=headers, content=data[offset:]
             )

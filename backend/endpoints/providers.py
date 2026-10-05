@@ -40,10 +40,29 @@ async def resolve(result_id: str) -> ProviderResult:
             return await run_in_threadpool(minerva.get_result, result_id)
         except (ValueError, OSError) as exc:
             raise HTTPException(404, "Minerva entry unavailable; search again") from exc
-    raw = await async_cache.get(f"provider:result:{result_id}")
+    raw = (
+        await async_cache.get(f"provider:details:{result_id}")
+        if result_id.startswith("romstime:")
+        else None
+    )
+    raw = raw or await async_cache.get(f"provider:result:{result_id}")
     if not raw:
         raise HTTPException(404, "Search result expired; search again")
-    return ProviderResult.model_validate_json(raw)
+    item = ProviderResult.model_validate_json(raw)
+    if item.provider == "romstime" and not item.options:
+        try:
+            item = await sources.romstime_options(item)
+            key = f"provider:details:{item.id}"
+            # Concurrent callers must receive the same option ordering.
+            await async_cache.set(key, item.model_dump_json(), ex=86400, nx=True)
+            raw = await async_cache.get(key)
+            if raw:
+                return ProviderResult.model_validate_json(raw)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(502, "RomsTime unavailable; try again later") from exc
+    return item
 
 
 @protected_route(router.get, "/status", [Scope.TASKS_RUN])
@@ -81,6 +100,12 @@ async def search(
         raise HTTPException(
             502, "Provider unavailable or rate limited; try again later"
         ) from exc
+
+
+@protected_route(router.get, "/results/{result_id}", [Scope.TASKS_RUN])
+async def result_details(request: Request, result_id: str) -> ProviderResult:
+    enabled(request)
+    return await resolve(result_id)
 
 
 @protected_route(router.post, "/index", [Scope.TASKS_RUN])

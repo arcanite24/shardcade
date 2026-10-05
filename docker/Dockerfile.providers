@@ -1,0 +1,4 @@
+ARG BASE_IMAGE=arcanite24/shardcade:metadata-unmatched-20260922
+FROM ${BASE_IMAGE}
+COPY backend /backend
+COPY frontend/dist /var/www/html

@@ -34,6 +34,7 @@
   "provider": "Provider",
   "queued": "Import queued",
   "refresh": "Refresh index",
+  "refresh-results": "Refresh results",
   "refreshing": "Refreshing index",
   "results": "{count} results",
   "retry": "Retry",
