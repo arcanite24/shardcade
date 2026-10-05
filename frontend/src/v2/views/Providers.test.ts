@@ -47,16 +47,19 @@ vi.mock("@v2/lib", () => ({
   }),
   RProgressLinear: defineComponent({ template: "<progress />" }),
   RTextField: defineComponent({
-    props: { modelValue: String, label: String },
+    props: {
+      modelValue: { type: String, default: "" },
+      label: { type: String, default: "" },
+    },
     template: '<input :aria-label="label" :value="modelValue" />',
   }),
   RSelect: defineComponent({
     props: {
-      items: Array,
-      itemTitle: String,
-      itemValue: String,
-      label: String,
-      modelValue: [String, Number],
+      items: { type: Array, default: () => [] },
+      itemTitle: { type: String, default: "name" },
+      itemValue: { type: String, default: "id" },
+      label: { type: String, default: "" },
+      modelValue: { type: [String, Number], default: "" },
     },
     emits: ["update:modelValue"],
     template:
