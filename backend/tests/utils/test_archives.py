@@ -289,6 +289,18 @@ class TestExtractLargestArchiveMember:
 
         assert result is None
 
+    def test_size_limit_rejects_archive_before_extraction(self, tmp_path):
+        listing = MagicMock(stdout=_fake_7z_listing_sized([("game.3ds", 100)]))
+        with (
+            patch.object(archives.subprocess, "run", return_value=listing),
+            patch.object(archives.subprocess, "Popen") as popen,
+        ):
+            result = archives.extract_largest_archive_member(
+                Path("/fake/game.zip"), tmp_path, max_bytes=50
+            )
+        assert result is None
+        popen.assert_not_called()
+
     def test_returns_none_and_cleans_up_on_extract_failure(self, tmp_path):
         """A codec the extractor can't decompress streams nothing and exits
         non-zero; no partial file may be left behind, and the reason must reach

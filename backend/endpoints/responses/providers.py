@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-ProviderId = Literal["minerva", "axekin", "vimm", "edgeemu", "startgame"]
+ProviderId = Literal["minerva", "axekin", "vimm", "edgeemu", "startgame", "romstime"]
 
 
 class ProviderOption(BaseModel):

@@ -2,13 +2,16 @@
 
 import asyncio
 import re
+import shutil
+import tempfile
 import time
+from contextlib import nullcontext
 from pathlib import Path
 from urllib.parse import unquote, urljoin, urlsplit
 
 from rq import get_current_job
 from rq.exceptions import NoSuchJobError
-from rq.job import Dependency, Job
+from rq.job import Dependency, Job, JobStatus
 
 from config import PROVIDER_DOWNLOAD_PATH
 from endpoints.responses.providers import ProviderJob, ProviderResult
@@ -20,7 +23,9 @@ from handler.providers.downloads import (
     torrent_download,
 )
 from handler.redis_handler import low_prio_queue, redis_client
+from utils.archives import _list_archive_file_members, extract_largest_archive_member
 from utils.context import create_httpx_client, initialize_context
+from utils.filesystem import COMPRESSED_FILE_EXTENSIONS
 
 JOB_LIST = "provider:jobs"
 
@@ -210,8 +215,48 @@ def import_rom(payload: dict, report) -> None:
         name = http_download(url, staging, report, expected_size=selected.size)
         name = filename_safe(selected.filename or name)
         source = staging
-    destination = directory / name
-    publish_file(source, destination, report)
+    compressed = Path(name).suffix.lower() in COMPRESSED_FILE_EXTENSIONS
+    extraction = (
+        tempfile.TemporaryDirectory(
+            prefix="provider-extract-", dir=PROVIDER_DOWNLOAD_PATH
+        )
+        if compressed
+        else nullcontext(None)
+    )
+    with extraction as temporary:
+        if temporary:
+            report(phase="extracting")
+            # Extraction and the final copy may share a disk; reserve room for both.
+            free = shutil.disk_usage(temporary).free - 64 * 1024**2
+            archive_dir = Path(temporary) / "archive"
+            extracted_dir = Path(temporary) / "extracted"
+            archive_dir.mkdir()
+            extracted_dir.mkdir()
+            archive = archive_dir / name
+            archive.symlink_to(source)
+            # ponytail: multi-file discs need folder registration; never publish one track alone.
+            if any(
+                Path(member).suffix.lower() in {".cue", ".gdi", ".m3u"}
+                for member, _size in _list_archive_file_members(archive)
+            ):
+                raise ValueError("Multi-file disc archives need manual import")
+            extracted = (
+                extract_largest_archive_member(
+                    archive, extracted_dir, max_bytes=free // 2
+                )
+                if free > 0
+                else None
+            )
+            if extracted is None:
+                raise ValueError(
+                    "Archive could not be extracted safely or lacks disk space"
+                )
+            source_to_publish = extracted
+            name = filename_safe(extracted.name)
+        else:
+            source_to_publish = source
+        destination = directory / name
+        publish_file(source_to_publish, destination, report)
     report(phase="registering", import_committed=True)
     try:
         rom_id = asyncio.run(register_rom(platform.id, name, fs_path))
@@ -219,9 +264,53 @@ def import_rom(payload: dict, report) -> None:
         raise ValueError(
             "File imported safely, but registration failed. Run a library scan to register it"
         ) from exc
+    report(phase="scanning", rom_id=rom_id, progress=0.99)
+    try:
+        scan_imported_rom(platform.id, rom_id)
+    except Exception:
+        report(
+            error="ROM imported, but its metadata scan failed; refresh this ROM's metadata",
+            rom_id=rom_id,
+        )
     report(phase="completed", progress=1, rom_id=rom_id)
     if source == staging:
         source.unlink(missing_ok=True)
+
+
+def scan_imported_rom(platform_id: int, rom_id: int) -> None:
+    from config import SCAN_TIMEOUT, TASK_RESULT_TTL
+    from endpoints.sockets.scan import (
+        report_scan_failure,
+        scan_job_meta,
+        scan_platforms,
+    )
+    from handler.redis_handler import scan_queue
+    from handler.scan_handler import ScanType
+    from tasks.scheduled.scan_library import enabled_metadata_sources
+
+    sources = enabled_metadata_sources()
+    if not sources:
+        raise ValueError("No metadata sources enabled")
+    scan = scan_queue.enqueue(
+        scan_platforms,
+        at_front=True,
+        on_failure=report_scan_failure,
+        platform_ids=[platform_id],
+        metadata_sources=sources,
+        scan_type=ScanType.UNMATCHED,
+        roms_ids=[rom_id],
+        job_timeout=SCAN_TIMEOUT,
+        result_ttl=TASK_RESULT_TTL,
+        meta=scan_job_meta(ScanType.UNMATCHED),
+    )
+    while scan.get_status(refresh=True) in (
+        JobStatus.QUEUED,
+        JobStatus.STARTED,
+        JobStatus.DEFERRED,
+    ):
+        time.sleep(2)
+    if scan.get_status(refresh=True) != JobStatus.FINISHED:
+        raise RuntimeError("Metadata scan did not finish")
 
 
 def run(kind: str, payload: dict) -> None:

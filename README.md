@@ -22,7 +22,8 @@ see [upstream RomM](https://github.com/rommapp/romm#readme).
 - **Selective downloads:** fetch the chosen torrent file by exact path and size,
   rather than downloading an entire collection or trusting unstable file indexes.
 - **Import queue:** progress, cooperative cancellation, retry, safe staging,
-  no-overwrite publication, and automatic library registration.
+  no-overwrite publication, archive extraction, automatic library registration,
+  and a targeted metadata scan before the job completes.
 - **HTTP and MEGA:** validated HTTP resume, public MEGA folder/file selection,
   streamed decryption, and integrity verification before import.
 - **Native access controls:** administrator-only provider operations using RomM's
@@ -39,6 +40,10 @@ see [upstream RomM](https://github.com/rommapp/romm#readme).
 | **Edge Emulation** | Website search       | HTTP download                                         |
 | **Vimm's Lair**    | Vault search         | Browser verification, then generated download URL     |
 | **StartGame**      | Platform collections | Website login when required, then direct or MEGA link |
+| **RomsTime**       | Paginated catalog search | Region, format, and encryption selection; fresh single-file downloads |
+
+Provider searches and version lists are cached in the browser for six hours per account.
+The download queue stays live, and **Refresh results** fetches an updated catalog page.
 
 Provider workflows were adapted from the account owner's Phobos ROM manager.
 Account requirements, quotas, verification screens, and unavailable files are still

@@ -19,6 +19,15 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* iOS Safari zooms focused controls below 16px; keep the viewport stable. */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 767px) {
+    html.r-v2 :is(input, textarea, select) {
+      font-size: 16px !important;
+    }
+  }
+}
+
 /* Responsive page padding — `--r-row-pad` is consumed everywhere as the
    horizontal gutter for page rows / toolbars / nav / widgets. Shrinking
    it here tightens every consumer at once on narrower viewports, so

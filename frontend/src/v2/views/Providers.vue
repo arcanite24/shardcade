@@ -21,6 +21,13 @@ import type {
 } from "@/__generated__";
 import { ROUTES } from "@/plugins/router";
 import api from "@/services/api";
+import {
+  cachedProviderData,
+  providerData,
+  rememberProviderView,
+} from "@/services/api/providers";
+import storeAuth from "@/stores/auth";
+import { useIsAlive } from "@/v2/composables/useIsAlive";
 import storePlatforms from "@/stores/platforms";
 import { formatBytes, formatTimestamp, toBrowserLocale } from "@/utils";
 import { useCan } from "@/v2/composables/useCan";
@@ -36,18 +43,26 @@ const router = useRouter();
 const snackbar = useSnackbar();
 const canManage = useCan("app.admin");
 const platforms = storePlatforms();
-const providers = ["minerva", "axekin", "vimm", "edgeemu", "startgame"].map(
-  (id) => ({
-    id,
-    name: {
-      minerva: "Minerva",
-      axekin: "Axekin",
-      vimm: "Vimm's Lair",
-      edgeemu: "Edge Emulation",
-      startgame: "StartGame",
-    }[id],
-  }),
-);
+const auth = storeAuth();
+const alive = useIsAlive();
+const providers = [
+  "minerva",
+  "axekin",
+  "vimm",
+  "edgeemu",
+  "startgame",
+  "romstime",
+].map((id) => ({
+  id,
+  name: {
+    minerva: "Minerva",
+    axekin: "Axekin",
+    vimm: "Vimm's Lair",
+    edgeemu: "Edge Emulation",
+    startgame: "StartGame",
+    romstime: "RomsTime",
+  }[id],
+}));
 const provider = ref(String(route.query.provider || "minerva"));
 const supportsFilters = computed(
   () => !["axekin", "startgame"].includes(provider.value),
@@ -92,7 +107,9 @@ const platformOptions = computed(() => [
 ]);
 let controller: AbortController | undefined;
 let filesController: AbortController | undefined;
-let alive = true;
+const optionsLoading = ref(false);
+let detailsRequest = 0;
+let restoring = false;
 
 function message(cause: unknown) {
   return isAxiosError(cause) && typeof cause.response?.data?.detail === "string"
@@ -106,18 +123,34 @@ function size(bytes?: number | null) {
   return bytes == null ? t("providers.unknown-size") : formatBytes(bytes, 1);
 }
 async function loadStatus() {
-  if (!alive || !canManage.value) return;
+  if (!alive.value || !canManage.value || !auth.user) return;
+  const user = auth.user.id;
   try {
-    const { data } = await api.get<ProviderStatus>("/providers/status");
-    if (alive) {
+    const data = await providerData<ProviderStatus>(
+      user,
+      "/providers/status",
+      {},
+      true,
+    );
+    if (auth.user?.id !== user) return;
+    if (alive.value) {
       state.value = data;
       statusError.value = "";
     }
   } catch (cause) {
-    if (alive) statusError.value = message(cause);
+    if (alive.value && auth.user?.id === user)
+      statusError.value = message(cause);
   }
 }
 async function saveQuery() {
+  if (auth.user)
+    rememberProviderView(auth.user.id, {
+      provider: provider.value,
+      query: query.value,
+      platform: platform.value,
+      page: page.value,
+      tab: tab.value,
+    });
   await router.replace({
     query: {
       provider: provider.value,
@@ -128,31 +161,38 @@ async function saveQuery() {
     },
   });
 }
-async function search(reset = true) {
+async function search(reset = true, force = false) {
   if (reset) page.value = 1;
   controller?.abort();
   const request = new AbortController();
   controller = request;
-  loading.value = true;
   error.value = "";
   results.value = undefined;
-  await saveQuery();
+  const user = auth.user?.id;
+  if (!canManage.value || user == null) return;
+  loading.value = true;
+  const params = {
+    provider: provider.value,
+    query: query.value.trim(),
+    platform: supportsFilters.value ? platform.value : "",
+    page: page.value,
+    limit: 20,
+    revision: provider.value === "minerva" ? state.value?.indexed_at || "" : "",
+  };
   try {
-    const { data } = await api.get<ProviderSearch>("/providers/search", {
-      signal: request.signal,
-      params: {
-        provider: provider.value,
-        query: query.value,
-        platform: supportsFilters.value ? platform.value : "",
-        page: page.value,
-        limit: 20,
-      },
-    });
-    if (!request.signal.aborted && alive) results.value = data;
+    void saveQuery();
+    const data = await providerData<ProviderSearch>(
+      user,
+      "/providers/search",
+      params,
+      force,
+    );
+    if (!request.signal.aborted && alive.value && auth.user?.id === user)
+      results.value = data;
   } catch (cause) {
-    if (!request.signal.aborted && alive) error.value = message(cause);
+    if (!request.signal.aborted && alive.value) error.value = message(cause);
   } finally {
-    if (!request.signal.aborted && alive) loading.value = false;
+    if (!request.signal.aborted && alive.value) loading.value = false;
   }
 }
 async function action(path: string) {
@@ -163,10 +203,10 @@ async function action(path: string) {
   } catch (cause) {
     snackbar.error(message(cause));
   } finally {
-    if (alive) busy.value = false;
+    if (alive.value) busy.value = false;
   }
 }
-function choose(item: ProviderResult) {
+async function choose(item: ProviderResult) {
   selected.value = item;
   option.value = 0;
   destination.value = platforms.allPlatforms.find(
@@ -176,6 +216,24 @@ function choose(item: ProviderResult) {
   megaNode.value = undefined;
   dialogError.value = "";
   dialog.value = true;
+  const sequence = ++detailsRequest;
+  optionsLoading.value = item.provider === "romstime";
+  if (!optionsLoading.value || !auth.user) return;
+  const user = auth.user.id;
+  try {
+    const data = await providerData<ProviderResult>(
+      user,
+      "/providers/results/" + item.id,
+    );
+    if (alive.value && sequence === detailsRequest && auth.user?.id === user)
+      selected.value = data;
+  } catch (cause) {
+    if (alive.value && sequence === detailsRequest)
+      dialogError.value = message(cause);
+  } finally {
+    if (alive.value && sequence === detailsRequest)
+      optionsLoading.value = false;
+  }
 }
 watch([selected, option], () => {
   verifiedUrl.value = "";
@@ -201,11 +259,12 @@ watch([selected, option, verifiedUrl], async () => {
       },
       { signal: request.signal },
     );
-    if (!request.signal.aborted && alive) megaFiles.value = data;
+    if (!request.signal.aborted && alive.value) megaFiles.value = data;
   } catch (cause) {
-    if (!request.signal.aborted && alive) dialogError.value = message(cause);
+    if (!request.signal.aborted && alive.value)
+      dialogError.value = message(cause);
   } finally {
-    if (!request.signal.aborted && alive) filesLoading.value = false;
+    if (!request.signal.aborted && alive.value) filesLoading.value = false;
   }
 });
 async function download() {
@@ -227,29 +286,79 @@ async function download() {
   } catch (cause) {
     dialogError.value = message(cause);
   } finally {
-    if (alive) busy.value = false;
+    if (alive.value) busy.value = false;
   }
 }
 watch(tab, saveQuery);
-watch(provider, () => {
-  controller?.abort();
-  results.value = undefined;
-  loading.value = false;
-  platform.value = "";
-  page.value = 1;
-});
-watch(canManage, (allowed) => {
-  if (allowed) void loadStatus();
-});
+watch(
+  () => state.value?.indexed_at,
+  (updated, previous) => {
+    if (
+      previous &&
+      updated !== previous &&
+      provider.value === "minerva" &&
+      query.value
+    )
+      void search(false);
+  },
+);
+watch(
+  provider,
+  () => {
+    if (restoring) return;
+    controller?.abort();
+    results.value = undefined;
+    loading.value = false;
+    platform.value = "";
+    page.value = 1;
+    if (canManage.value && (query.value || provider.value === "startgame"))
+      void search(false);
+    else void saveQuery();
+  },
+  { flush: "sync" },
+);
+watch(
+  () => (canManage.value ? auth.user?.id : undefined),
+  (user) => {
+    controller?.abort();
+    state.value = undefined;
+    results.value = undefined;
+    dialog.value = false;
+    selected.value = undefined;
+    detailsRequest++;
+    if (user == null) return;
+    if (!route.query.provider) {
+      const saved = cachedProviderData<Record<string, string | number>>(
+        user,
+        "/view",
+      );
+      if (saved && providers.some((p) => p.id === saved.provider)) {
+        restoring = true;
+        provider.value = String(saved.provider);
+        query.value = String(saved.query || "");
+        platform.value = String(saved.platform || "");
+        page.value = Math.max(1, Number(saved.page) || 1);
+        tab.value = saved.tab === "downloads" ? "downloads" : "search";
+        restoring = false;
+      }
+    }
+    state.value = cachedProviderData<ProviderStatus>(user, "/providers/status");
+    void loadStatus();
+    if (query.value || provider.value === "startgame") void search(false);
+  },
+  { immediate: true },
+);
 useIntervalFn(() => {
   if (!document.hidden) void loadStatus();
 }, 5000);
-onMounted(async () => {
-  await Promise.all([loadStatus(), platforms.fetchPlatforms()]);
-  if (query.value && state.value?.enabled) await search(false);
+onMounted(() => {
+  if (!platforms.allPlatforms.length)
+    void platforms
+      .fetchPlatforms()
+      .catch((cause: unknown) => snackbar.error(message(cause)));
 });
 onBeforeUnmount(() => {
-  alive = false;
+  detailsRequest++;
   controller?.abort();
   filesController?.abort();
 });
@@ -285,13 +394,14 @@ onBeforeUnmount(() => {
       <section class="providers__index" :aria-label="t('providers.index')">
         <div>
           <h2>{{ t("providers.index") }}</h2>
-          <p v-if="state?.index_ready">
+          <p v-if="!state && !statusError">{{ t("common.loading") }}</p>
+          <p v-else-if="state?.index_ready">
             {{ t("providers.index-ready", { count: n(state.records || 0) }) }}
             <span v-if="state.indexed_at">{{
               formatTimestamp(state.indexed_at, locale)
             }}</span>
           </p>
-          <p v-else>{{ t("providers.index-empty") }}</p>
+          <p v-else-if="state">{{ t("providers.index-empty") }}</p>
         </div>
         <RBtn
           :disabled="!state?.enabled || indexBusy || busy"
@@ -317,7 +427,7 @@ onBeforeUnmount(() => {
         >
       </nav>
       <section v-if="tab === 'search'" :aria-label="t('common.search')">
-        <form class="providers__search" @submit.prevent="search()">
+        <form v-if="state" class="providers__search" @submit.prevent="search()">
           <RSelect
             v-model="provider"
             :items="providers"
@@ -351,8 +461,16 @@ onBeforeUnmount(() => {
             >{{ t("common.search") }}</RBtn
           >
         </form>
+        <RProgressLinear
+          v-if="!state && !statusError"
+          indeterminate
+          :aria-label="t('common.loading')"
+        />
         <RAlert v-if="error" type="error" class="mt-4">{{ error }}</RAlert>
-        <p v-if="!results && !loading && !error" class="providers__empty">
+        <p
+          v-if="state && !results && !loading && !error"
+          class="providers__empty"
+        >
           {{ t("providers.search-hint") }}
         </p>
         <p v-if="results?.items.length === 0" class="providers__empty">
@@ -367,6 +485,13 @@ onBeforeUnmount(() => {
         <div v-if="results" aria-live="polite">
           <p class="mt-4">
             {{ t("providers.results", { count: n(results.total) }) }}
+            <RBtn
+              variant="text"
+              :disabled="loading"
+              prepend-icon="mdi-refresh"
+              @click="search(false, true)"
+              >{{ t("providers.refresh-results") }}</RBtn
+            >
           </p>
           <article
             v-for="item in results.items"
@@ -393,7 +518,7 @@ onBeforeUnmount(() => {
               >
             </div>
             <RBtn
-              :disabled="!item.options?.length"
+              :disabled="!item.options?.length && item.provider !== 'romstime'"
               prepend-icon="mdi-download-outline"
               @click="choose(item)"
               >{{ t("providers.import") }}</RBtn
@@ -426,7 +551,12 @@ onBeforeUnmount(() => {
         </div>
       </section>
       <section v-else :aria-label="t('providers.downloads')">
-        <p v-if="!state?.jobs?.length" class="providers__empty">
+        <RProgressLinear
+          v-if="!state && !statusError"
+          indeterminate
+          :aria-label="t('common.loading')"
+        />
+        <p v-else-if="state && !state.jobs?.length" class="providers__empty">
           {{ t("providers.no-downloads") }}
         </p>
         <article
@@ -499,6 +629,9 @@ onBeforeUnmount(() => {
             item-title="name"
             item-value="id"
             :label="t('providers.download-option')"
+            :loading="optionsLoading"
+            :disabled="optionsLoading"
+            searchable
           />
           <RSelect
             v-model="destination"
@@ -552,6 +685,7 @@ onBeforeUnmount(() => {
           ><RBtn
             :loading="busy"
             :disabled="
+              optionsLoading ||
               !destination ||
               !selectedOption ||
               (selectedOption.method === 'verify' && !verifiedUrl) ||

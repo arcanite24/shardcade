@@ -31,6 +31,7 @@ from config import (
     SENTRY_DSN,
 )
 from endpoints.activity import router as activity_router
+from endpoints.assistant import router as assistant_router
 from endpoints.auth import router as auth_router
 from endpoints.client_tokens import router as client_tokens_router
 from endpoints.collections import router as collections_router
@@ -181,6 +182,7 @@ app.add_middleware(
 app.middleware("http")(set_context_middleware)
 
 app.include_router(heartbeat_router, prefix="/api")
+app.include_router(assistant_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(activity_router, prefix="/api")
 app.include_router(user_router, prefix="/api")

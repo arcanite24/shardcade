@@ -1,11 +1,12 @@
 """Run with `python -m unittest discover -s tools -p test_providers.py`."""
 
 import hashlib
+import json
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -18,7 +19,7 @@ from handler.providers.downloads import (
     selected_torrent_file,
     torrent_download,
 )
-from handler.providers.jobs import status
+from handler.providers.jobs import import_rom, scan_imported_rom, status
 from handler.providers.mega import decrypt_file, xor
 from handler.providers.minerva import (
     build_index,
@@ -27,7 +28,14 @@ from handler.providers.minerva import (
     parse_torrent,
     search_index,
 )
-from handler.providers.sources import download_url, parse_edge, parse_vimm
+from handler.providers.sources import (
+    download_url,
+    parse_edge,
+    parse_romstime,
+    parse_vimm,
+    romstime_options,
+)
+from utils.zip_cache import ensure_zipfile_writable
 
 
 def encode(value):
@@ -45,6 +53,167 @@ def encode(value):
 
 
 class ProviderChecks(unittest.TestCase):
+    def test_romstime_catalog_and_fresh_download_descriptors(self):
+        import asyncio
+
+        game_id = "44061ba4-51c2-44a3-83b3-b3a571dc108f"
+        source_id = "df7aea7f-31a7-498b-8882-717e2c016351"
+        version_id = "92b4bd38-fe13-44ac-8d1f-809c50bfb324"
+
+        def page(field, rows):
+            payload = json.dumps({field: rows})
+            return (
+                "<script>self.__next_f.push(" + json.dumps([1, payload]) + ")</script>"
+            )
+
+        catalog = page(
+            "roms",
+            [
+                {
+                    "id": game_id,
+                    "title": "Mario Kart 7",
+                    "platform": "Nintendo 3DS",
+                    "display_region": "United States",
+                    "computed_min_size_bytes": 100,
+                }
+            ],
+        )
+        item = parse_romstime(catalog)[0]
+        self.assertEqual((item.platform, item.region, item.size), ("3ds", "USA", 100))
+        versions = page(
+            "regionalVersions",
+            [
+                {
+                    "id": version_id,
+                    "region_code": "USA",
+                    "format": "3DS Format",
+                    "crypto_state": "decrypted",
+                    "filename": "Game.3ds",
+                    "download_sources": [
+                        {"id": source_id, "status": "active", "provider": "uploadg"},
+                        {
+                            "id": source_id,
+                            "status": "active",
+                            "provider": "moondl",
+                            "part_group": "parts",
+                        },
+                        {"id": source_id, "status": "inactive", "provider": "moondl"},
+                        {"id": source_id, "status": "active", "provider": "unknown"},
+                    ],
+                }
+            ],
+        )
+        with patch(
+            "handler.providers.sources.fetch_text",
+            AsyncMock(return_value=(versions, {})),
+        ):
+            expanded = asyncio.run(romstime_options(item))
+        self.assertEqual(len(expanded.options), 1)
+        selected = expanded.options[0]
+        self.assertIn("USA · 3DS Format · decrypted", selected.label)
+        self.assertIn("versionId=" + version_id, selected.url)
+        self.assertIn("sourceId=" + source_id, selected.url)
+        self.assertEqual(selected.method, "http")
+        self.assertEqual(selected.filename, "")
+        download_url(selected.url)
+        download_url("https://worker.romstime.com/dl/" + source_id)
+        download_url("https://ms215.moondl.com/d/token/Game.3ds")
+        with self.assertRaises(ValueError):
+            download_url("https://worker.romstime.com.evil.test/dl/file")
+        with self.assertRaises(ValueError):
+            parse_romstime("<html>Verification required</html>")
+
+    def test_imported_rom_uses_unmatched_metadata_scan(self):
+        from handler.scan_handler import ScanType
+
+        with (
+            patch(
+                "tasks.scheduled.scan_library.enabled_metadata_sources",
+                return_value=["ss"],
+            ),
+            patch("handler.redis_handler.scan_queue.enqueue") as enqueue,
+        ):
+            enqueue.return_value.get_status.return_value = JobStatus.FINISHED
+            scan_imported_rom(7, 42)
+        self.assertEqual(enqueue.call_args.kwargs["roms_ids"], [42])
+        self.assertEqual(enqueue.call_args.kwargs["scan_type"], ScanType.UNMATCHED)
+
+    def test_archive_import_extracts_then_scans_registered_rom(self):
+        library = self.root / "library"
+        library.mkdir()
+        staging = self.root / "http"
+        staging.mkdir()
+        events = []
+        result = {
+            "id": "axekin:game",
+            "provider": "axekin",
+            "name": "Game",
+            "source_url": "https://example.org/game",
+            "options": [
+                {
+                    "label": "HTTP",
+                    "method": "http",
+                    "url": "https://example.org/game.zip",
+                }
+            ],
+        }
+
+        def download(_url, path, _report, **_kwargs):
+            path.write_bytes(b"archive")
+            return "Game.zip"
+
+        def extract(_source, destination, **_kwargs):
+            self.assertEqual(_source.name, "Game.zip")
+            output = destination / "Game.3ds"
+            output.write_bytes(b"rom")
+            events.append("extracted")
+            return output
+
+        def scan(_platform_id, _rom_id):
+            self.assertEqual((library / "Game.3ds").read_bytes(), b"rom")
+            events.append("scanned")
+
+        platform = Mock(id=7, fs_slug="n3ds")
+        reports = []
+        with (
+            patch("handler.providers.jobs.PROVIDER_DOWNLOAD_PATH", str(self.root)),
+            patch("handler.providers.jobs.http_download", side_effect=download),
+            patch(
+                "handler.providers.jobs._list_archive_file_members",
+                return_value=[("Game.3ds", 3)],
+            ),
+            patch(
+                "handler.providers.jobs.extract_largest_archive_member",
+                side_effect=extract,
+            ),
+            patch(
+                "handler.providers.jobs.register_rom",
+                new_callable=AsyncMock,
+                return_value=42,
+            ),
+            patch("handler.providers.jobs.scan_imported_rom", side_effect=scan),
+            patch(
+                "handler.database.db_platform_handler.get_platform",
+                return_value=platform,
+            ),
+            patch(
+                "handler.filesystem.fs_rom_handler.get_roms_upload_path",
+                return_value="/roms/n3ds",
+            ),
+            patch(
+                "handler.filesystem.fs_rom_handler.validate_path", return_value=library
+            ),
+        ):
+            import_rom(
+                {"result": result, "option": 0, "platform_id": 7},
+                lambda **values: reports.append(values),
+            )
+
+        self.assertEqual(events, ["extracted", "scanned"])
+        self.assertEqual(reports[-1]["rom_id"], 42)
+        self.assertFalse((library / "Game.zip").exists())
+        self.assertFalse((staging / "axekin_game").exists())
+
     def test_torrent_storage_error_fails_promptly_and_stops_transfer(self):
         requests = []
 
@@ -96,6 +265,7 @@ class ProviderChecks(unittest.TestCase):
         self.assertEqual(status(job).state, "deferred")
 
     def setUp(self):
+        ensure_zipfile_writable()
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
@@ -226,7 +396,7 @@ class ProviderChecks(unittest.TestCase):
                 "content-disposition": 'attachment; filename="Game.zip"',
             }
             if offset:
-                headers["content-range"] = f"bytes {offset}-{len(data)-1}/{len(data)}"
+                headers["content-range"] = f"bytes {offset}-{len(data) - 1}/{len(data)}"
             return httpx.Response(
                 206 if offset else 200, headers=headers, content=data[offset:]
             )

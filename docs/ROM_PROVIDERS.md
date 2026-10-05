@@ -14,12 +14,31 @@ API and downloads. Native RomM authentication and library APIs are unchanged.
 | Edge Emulation | Website search                                                | HTTP download                                                                    |
 | Vimm's Lair    | Vault search                                                  | Open the source, complete its verification, paste the generated URL              |
 | StartGame      | WordPress platform collections; an empty search browses them  | Open the collection, sign in when required, paste its direct or public MEGA link |
+| RomsTime       | Website search with platform filters and pagination          | Select a region, format, and encryption variant; single-file MoonDL and UploadG downloads |
 
 Providers and download hosts can change availability or impose account, quota,
 verification, or regional restrictions. RomM does not bypass those gates or store
 provider account passwords. Public MEGA file/folder links support a file picker,
 streamed decryption, and integrity verification. Unsupported hosts can be downloaded
 in the browser and imported with RomM's existing Upload ROMs screen.
+
+## Browser caching and RomsTime versions
+
+Search results and RomsTime version options are cached in the browser for six hours,
+scoped to the signed-in account, with at most 80 entries and 3 MiB of persistent data. Repeated requests share one
+network call. Refresh results bypasses the cache. The queue and index status refresh
+on entry and every five seconds while the page is visible. Minerva search cache keys
+include the index timestamp. The last provider, query, filters, page, and tab are restored
+when returning without a deep link. Browser storage failures fall back to a bounded memory cache.
+
+RomsTime search loads its version options only when importing a game. Options show
+region, format, encryption, filename, and host. Cached descriptors use the stable
+download API, which generates a fresh signed URL when the worker starts. Multi-part,
+password-protected, inactive, and unsupported sources are excluded from automatic imports.
+Imports use the existing extraction, library registration, and metadata scan pipeline.
+Programmatic clients can inspect `GET /api/providers/results/{result_id}` before choosing
+the zero-based option for `POST /api/providers/downloads`. The assistant exposes the same
+details through `get_provider_result`.
 
 ## Minerva without the unreliable search API
 
@@ -77,9 +96,15 @@ remove completed staging data through qBittorrent when no imports are active.
 The Downloads tab shows progress, errors, cancellation, and retry. Cancellation is
 cooperative; a waiting job is skipped when its turn reaches the worker. HTTP retries
 resume only with a matching strong ETag. Files are checked, copied through a temporary
-file, and registered with RomM. Existing filenames are never overwritten. A later
-metadata scan can enrich newly imported ROMs with artwork and metadata. If database
-registration fails after publication, the error explicitly requests a library scan.
+file, and registered with RomM. Compressed downloads extract their largest ROM file
+into staging first; the archive is not added to the library. Extraction is bounded by
+available disk space, and existing files are never overwritten. Once registered, a
+targeted unmatched scan uses the enabled metadata sources and the import waits for it
+to finish. A quick scan would skip metadata lookups for the already registered ROM.
+If metadata scanning fails, the imported ROM remains available and the job shows a
+warning. If database registration fails after publication, the error explicitly
+requests a library scan. Multi-file disc archives need manual import because choosing
+one track would lose the others.
 
 ## API and handheld clients
 

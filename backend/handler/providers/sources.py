@@ -6,6 +6,7 @@ import json
 import re
 from typing import Literal
 from urllib.parse import unquote, urljoin, urlsplit
+from uuid import UUID
 
 from endpoints.responses.providers import (
     ProviderId,
@@ -27,6 +28,8 @@ DOWNLOAD_HOSTS = (
     "1fichier.com",
     "mega.nz",
     "mega.co.nz",
+    "romstime.com",
+    "moondl.com",
 )
 
 
@@ -168,6 +171,82 @@ def parse_vimm(text: str) -> list[ProviderResult]:
     return items
 
 
+def romstime_data(text: str, field: str) -> list[dict]:
+    payload = ""
+    for frame in re.findall(
+        r"self\.__next_f\.push\((\[.*?\])\)</script>", text, re.DOTALL
+    ):
+        value = json.loads(frame)
+        if value[0] == 1 and isinstance(value[1], str):
+            payload += value[1]
+    match = re.search(r'"' + re.escape(field) + r'":\s*(?=\[)', payload)
+    if not match:
+        raise ValueError("RomsTime did not return its catalog")
+    value, _ = json.JSONDecoder().raw_decode(payload[match.end() :])
+    return value
+
+
+def parse_romstime(text: str) -> list[ProviderResult]:
+    items = []
+    for game in romstime_data(text, "roms"):
+        game_id = str(UUID(game["id"]))
+        item = result(
+            "romstime",
+            game["title"],
+            f"https://romstime.com/download/{game_id}",
+            [],
+            infer_platform(game.get("platform", "")),
+        )
+        item.region = (game.get("display_region") or "Unknown").replace(
+            "United States", "USA"
+        )
+        item.size = game.get("computed_min_size_bytes")
+        items.append(item)
+    return items
+
+
+async def romstime_options(item: ProviderResult) -> ProviderResult:
+    game_id = str(UUID(urlsplit(item.source_url).path.rsplit("/", 1)[-1]))
+    text, _ = await fetch_text(f"https://romstime.com/download/{game_id}")
+    options = []
+    for version in romstime_data(text, "regionalVersions"):
+        version_id = str(UUID(version["id"]))
+        for source in version.get("download_sources", []):
+            if (
+                source.get("status") != "active"
+                or source.get("provider") not in ("moondl", "uploadg")
+                or source.get("part_group")
+                or source.get("part_number") is not None
+                or source.get("extract_password")
+            ):
+                continue
+            source_id = str(UUID(source["id"]))
+            label = " · ".join(
+                str(value)
+                for value in (
+                    version.get("region_code") or version.get("region_name"),
+                    version.get("format"),
+                    version.get("crypto_state"),
+                    version.get("filename"),
+                    source["provider"],
+                )
+                if value
+            )
+            options.append(
+                ProviderOption(
+                    label=label,
+                    method="http",
+                    url=f"https://romstime.com/api/roms/{game_id}/download?versionId={version_id}&sourceId={source_id}",
+                )
+            )
+    if not options:
+        raise ValueError(
+            "RomsTime has no supported single-file download for this game; open the source"
+        )
+    item.options = options[:101]
+    return item
+
+
 async def search(
     provider: ProviderId, query: str, platform: str, region: str, page: int, limit: int
 ) -> ProviderSearch:
@@ -223,6 +302,36 @@ async def search(
             )
         total = games.get("meta", {}).get("total", len(items))
         remote_page = True
+    elif provider == "romstime":
+        if region:
+            raise ValueError("Choose the region in the RomsTime download options")
+        text, _ = await fetch_text(
+            "https://romstime.com/search", params={"q": query, "page": page}
+        )
+        if platform:
+            slug = next(
+                (
+                    p["slug"]
+                    for p in romstime_data(text, "platforms")
+                    if infer_platform(p["name"]) == platform
+                ),
+                None,
+            )
+            if not slug:
+                raise ValueError("RomsTime does not support this platform")
+            text, _ = await fetch_text(
+                "https://romstime.com/search",
+                params={"q": query, "page": page, "platform": slug},
+            )
+        items = parse_romstime(text)
+        count = re.search(
+            r"Found\s+(?:<!--.*?-->\s*)?([\d,]+)\s+(?:<!--.*?-->\s*)?games?", text
+        )
+        if not count:
+            raise ValueError("RomsTime did not return its search count")
+        total = int(count[1].replace(",", ""))
+        limit = 24
+        remote_page = True
     elif provider == "startgame":
         text, headers = await fetch_text(
             "https://startgame.world/wp-json/wp/v2/posts",
@@ -253,7 +362,7 @@ async def search(
         remote_page = True
     else:
         raise ValueError("Unknown provider")
-    if remote_page and (platform or region):
+    if remote_page and provider != "romstime" and (platform or region):
         raise ValueError("This catalog does not support platform or region filters")
     items = [
         r
@@ -265,7 +374,13 @@ async def search(
         total = len(items)
         items = items[(page - 1) * limit : page * limit]
     for item in items:
-        await async_cache.setex(
-            f"provider:result:{item.id}", 86400, item.model_dump_json()
-        )
+        if provider == "romstime":
+            # Keep version indices stable for already-open import dialogs.
+            await async_cache.set(
+                f"provider:result:{item.id}", item.model_dump_json(), ex=86400, nx=True
+            )
+        else:
+            await async_cache.setex(
+                f"provider:result:{item.id}", 86400, item.model_dump_json()
+            )
     return ProviderSearch(items=items, total=total, page=page, limit=limit)
