@@ -41,17 +41,23 @@ vi.mock("@v2/lib", () => ({
   RAlert: defineComponent({ template: "<div><slot /></div>" }),
   RBtn: defineComponent({ template: "<button><slot /></button>" }),
   RDialog: defineComponent({
-    props: ["modelValue"],
+    props: { modelValue: Boolean },
     template:
       '<div v-if="modelValue"><slot name="header"/><slot name="content"/><slot name="footer"/></div>',
   }),
   RProgressLinear: defineComponent({ template: "<progress />" }),
   RTextField: defineComponent({
-    props: ["modelValue", "label"],
+    props: { modelValue: String, label: String },
     template: '<input :aria-label="label" :value="modelValue" />',
   }),
   RSelect: defineComponent({
-    props: ["items", "itemTitle", "itemValue", "label", "modelValue"],
+    props: {
+      items: Array,
+      itemTitle: String,
+      itemValue: String,
+      label: String,
+      modelValue: [String, Number],
+    },
     emits: ["update:modelValue"],
     template:
       '<select :aria-label="label" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option v-for="item in items" :key="item[itemValue]" :value="item[itemValue]">{{ item[itemTitle] }}</option></select>',
